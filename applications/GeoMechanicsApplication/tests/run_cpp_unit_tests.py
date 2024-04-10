@@ -1,5 +1,5 @@
 import argparse
-import os.path
+import os
 import subprocess
 import sys
 
@@ -11,6 +11,9 @@ def run():
     command = [os.path.join("test", "KratosGeoMechanicsCoreTest")]
     if args.onlyFastSuite:
         command.append("--gtest_filter=KratosGeoMechanicsFastSuite.*")
+
+    print(f"cwd = {os.getcwd()}")
+    print(f"command = {command}")
 
     return subprocess.run(command).returncode
 
