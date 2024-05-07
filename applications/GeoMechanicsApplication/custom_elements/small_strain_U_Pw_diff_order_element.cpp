@@ -180,7 +180,7 @@ int SmallStrainUPwDiffOrderElement::Check(const ProcessInfo& rCurrentProcessInfo
 void SmallStrainUPwDiffOrderElement::Initialize(const ProcessInfo& rCurrentProcessInfo)
 {
     KRATOS_TRY
-
+    KRATOS_INFO("SmallStrainUPwDiffOrderElement") << "Initializing element " << this->Id() << std::endl;
     const GeometryType&                             rGeom = GetGeometry();
     const GeometryType::IntegrationPointsArrayType& IntegrationPoints =
         rGeom.IntegrationPoints(this->GetIntegrationMethod());
@@ -259,6 +259,24 @@ void SmallStrainUPwDiffOrderElement::Initialize(const ProcessInfo& rCurrentProce
         }
     }
 
+    // resize mConstitutiveStrainVector:
+    if (mConstitutiveStrainVector.size() != IntegrationPoints.size()) {
+        mConstitutiveStrainVector.resize(IntegrationPoints.size());
+        for (unsigned int i = 0; i < mConstitutiveStrainVector.size(); ++i) {
+            mConstitutiveStrainVector[i].resize(VoigtSize);
+            std::fill(mConstitutiveStrainVector[i].begin(), mConstitutiveStrainVector[i].end(), 0.0);
+        }
+    }
+
+    // resize mElementStrainVector:
+    if (mElementStrainVector.size() != IntegrationPoints.size()) {
+        mElementStrainVector.resize(IntegrationPoints.size());
+        for (unsigned int i = 0; i < mElementStrainVector.size(); ++i) {
+            mElementStrainVector[i].resize(VoigtSize);
+            std::fill(mElementStrainVector[i].begin(), mElementStrainVector[i].end(), 0.0);
+        }
+    }
+
     if (mStateVariablesFinalized.size() != IntegrationPoints.size())
         mStateVariablesFinalized.resize(IntegrationPoints.size());
 
@@ -322,14 +340,14 @@ void SmallStrainUPwDiffOrderElement::InitializeSolutionStep(const ProcessInfo& r
         this->CalculateKinematics(Variables, GPoint);
         Variables.B = b_matrices[GPoint];
 
-        // Compute infinitesimal strain
-        this->CalculateStrain(Variables, GPoint);
+        Variables.StrainVector = mConstitutiveStrainVector[GPoint];
 
         // set gauss points variables to constitutive law parameters
         this->SetConstitutiveParameters(Variables, ConstitutiveParameters);
 
         // compute constitutive tensor and/or stresses
         noalias(Variables.StressVector) = mStressVector[GPoint];
+        KRATOS_INFO("InitializeSolutionStep") << "StressVector = " << Variables.StressVector << std::endl;
         ConstitutiveParameters.SetStressVector(Variables.StressVector);
         mConstitutiveLawVector[GPoint]->InitializeMaterialResponseCauchy(ConstitutiveParameters);
 
@@ -591,7 +609,7 @@ void SmallStrainUPwDiffOrderElement::FinalizeSolutionStep(const ProcessInfo& rCu
 
         // Compute infinitesimal strain
         this->CalculateStrain(Variables, GPoint);
-
+        mElementStrainVector[GPoint] = Variables.StrainVector;
         // set gauss points variables to constitutive law parameters
         this->SetConstitutiveParameters(Variables, ConstitutiveParameters);
 
@@ -601,6 +619,11 @@ void SmallStrainUPwDiffOrderElement::FinalizeSolutionStep(const ProcessInfo& rCu
         mConstitutiveLawVector[GPoint]->FinalizeMaterialResponseCauchy(ConstitutiveParameters);
         mStateVariablesFinalized[GPoint] =
             mConstitutiveLawVector[GPoint]->GetValue(STATE_VARIABLES, mStateVariablesFinalized[GPoint]);
+
+        mConstitutiveStrainVector[GPoint] = ConstitutiveParameters.GetStrainVector();
+        mStressVector[GPoint]             = ConstitutiveParameters.GetStressVector();
+
+        KRATOS_INFO("FinalizeSolutionStep") << "StressVector = " << mStressVector[GPoint] << std::endl;
 
         // retention law
         mRetentionLawVector[GPoint]->FinalizeSolutionStep(RetentionParameters);
@@ -1339,8 +1362,10 @@ void SmallStrainUPwDiffOrderElement::CalculateAll(MatrixType&        rLeftHandSi
         // Compute infinitesimal strain
         this->CalculateStrain(Variables, GPoint);
 
+        Vector strain_increment = Variables.StrainVector - mElementStrainVector[GPoint];
         // set gauss points variables to constitutive law parameters
         this->SetConstitutiveParameters(Variables, ConstitutiveParameters);
+        ConstitutiveParameters.SetStrainVector(strain_increment);
 
         // compute constitutive tensor and/or stresses
         ConstitutiveParameters.SetStressVector(mStressVector[GPoint]);

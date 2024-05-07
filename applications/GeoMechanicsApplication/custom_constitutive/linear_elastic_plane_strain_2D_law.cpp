@@ -95,13 +95,18 @@ void GeoLinearElasticPlaneStrain2DLaw::CalculatePK2Stress(const Vector& rStrainV
 {
     KRATOS_TRY
 
-    mDeltaStrainVector = rValues.GetStrainVector() - mStrainVectorFinalized;
+    mDeltaStrainVector = rValues.GetStrainVector();
+    KRATOS_INFO("GeoLinearElasticPlaneStrain2DLaw")
+        << "Delta Strain Vector: " << mDeltaStrainVector << std::endl;
 
     Matrix C;
     this->CalculateElasticMatrix(C, rValues);
 
     // Incremental formulation
     noalias(mStressVector) = mStressVectorFinalized + prod(C, mDeltaStrainVector);
+    KRATOS_INFO("GeoLinearElasticPlaneStrain2DLaw") << "Stress Vector: " << mStressVector << std::endl;
+    KRATOS_INFO("GeoLinearElasticPlaneStrain2DLaw")
+        << "Stress Vector Finalized: " << mStressVectorFinalized << std::endl;
 
     rStressVector = mStressVector;
 
@@ -116,7 +121,8 @@ void GeoLinearElasticPlaneStrain2DLaw::InitializeMaterialResponseCauchy(Constitu
     if (!mIsModelInitialized) {
         // stress vector must be initialized:
         mStressVectorFinalized = rValues.GetStressVector();
-        mIsModelInitialized = true;
+        mStrainVectorFinalized = rValues.GetStrainVector();
+        mIsModelInitialized    = true;
     }
     KRATOS_CATCH("")
 }
@@ -125,8 +131,11 @@ bool GeoLinearElasticPlaneStrain2DLaw::RequiresFinalizeMaterialResponse() { retu
 
 void GeoLinearElasticPlaneStrain2DLaw::FinalizeMaterialResponseCauchy(ConstitutiveLaw::Parameters& rValues)
 {
-    mStrainVectorFinalized = rValues.GetStrainVector();
+    mStrainVectorFinalized += mDeltaStrainVector;
     mStressVectorFinalized = mStressVector;
+
+    rValues.SetStrainVector(mStrainVectorFinalized);
+    rValues.SetStressVector(mStressVectorFinalized);
 }
 
 void GeoLinearElasticPlaneStrain2DLaw::FinalizeMaterialResponsePK2(ConstitutiveLaw::Parameters& rValues)

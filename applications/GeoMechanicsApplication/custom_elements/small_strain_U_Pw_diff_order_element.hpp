@@ -222,6 +222,8 @@ protected:
 
     GeometryType::Pointer mpPressureGeometry;
     std::vector<Vector>   mStressVector;
+    std::vector<Vector>   mConstitutiveStrainVector;
+    std::vector<Vector>   mElementStrainVector;
     std::vector<Vector>   mStateVariablesFinalized;
     bool                  mIsInitialised = false;
 
