@@ -16,6 +16,10 @@
 ~scripts/standard_configure.sh
 ~scripts/standard_configure_MINGW.bat
 ~scripts/standard_configure.bat
+external_libraries/boost/*
+examples-main/*
+.vs/*
+out/*
 scripts/*.out
 scripts/*.sh
 scripts/*.bat

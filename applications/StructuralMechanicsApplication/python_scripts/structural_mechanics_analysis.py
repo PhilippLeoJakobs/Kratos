@@ -74,7 +74,7 @@ class StructuralMechanicsAnalysis(AnalysisStage):
         """ Create the Solver (and create and import the ModelPart if it is not alread in the model) """
         ## Solver construction
         return structural_solvers.CreateSolver(self.model, self.project_parameters)
-
+    
     def _CreateProcesses(self, parameter_name, initialization_order):
         """Create a list of Processes
         This method is TEMPORARY to not break existing code
