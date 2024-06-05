@@ -7,22 +7,6 @@ from KratosMultiphysics.StructuralMechanicsApplication.structural_mechanics_anal
 import numpy as np
 import time as timer
 
-def generate_downward_vector(magnitude=100000):
-    # Generate random angles in degrees
-    angle_xy_deg = np.random.uniform(-45, 45)
-    angle_zy_deg = np.random.uniform(-45, 45)
-    
-    # Convert angles to radians
-    angle_xy_rad = np.radians(angle_xy_deg)
-    angle_zy_rad = np.radians(angle_zy_deg)
-    
-    # Calculate the components of the vector
-    y_component = -1 * magnitude * np.cos(angle_xy_rad) * np.cos(angle_zy_rad)
-    x_component = magnitude * np.sin(angle_xy_rad)
-    z_component = magnitude * np.sin(angle_zy_rad)
-    
-    return np.array([x_component, y_component, z_component])
-
 def _GetModelPart(model, solver_settings):
     #TODO can be removed once model is fully available
     model_part_name = solver_settings["model_part_name"].GetString()
@@ -38,15 +22,15 @@ def _GetModelPart(model, solver_settings):
     return model_part
 
 
-def ModifyPointLoads(mp, new_load_x):
+def ModifyPointLoads(mp, new_load_x, new_load_y, new_load_z):
     smp = mp.GetSubModelPart("PointLoad3D_load")
     for node in smp.Nodes:
-        node.SetSolutionStepValue(StructuralMechanicsApplication.POINT_LOAD,0,new_load_x)
+        node.SetSolutionStepValue(StructuralMechanicsApplication.POINT_LOAD,0,[new_load_x,new_load_y,new_load_z])
 
 
 
 # ==============================================================================
-class MeanMCStrainEnergyResponseFunction(ResponseFunctionInterface):
+class VarianceMCStrainEnergyResponseFunction(ResponseFunctionInterface):
     """Linear strain energy response function. It triggers the primal analysis and
     uses the primal analysis results to calculate response value and gradient.
 
@@ -95,11 +79,12 @@ class MeanMCStrainEnergyResponseFunction(ResponseFunctionInterface):
         sample_gradient = [{} for _ in range(self.num_samples)]
 
         for i in range(self.num_samples):
-            x_val = generate_downward_vector()
-            Logger.PrintInfo(x_val)
+            y_val = np.random.normal(-100000, 10000)
+            Logger.PrintInfo(y_val)
+            x_val = np.random.normal(0, 60000)
             
             # Modify point loads based on random values
-            ModifyPointLoads(self.primal_model_part, x_val)
+            ModifyPointLoads(self.primal_model_part, x_val, y_val, 0)
             
             # Perform structural analysis
             #self.primal_analysis = StructuralMechanicsAnalysis(self.model, self.ProjectParametersPrimal)
@@ -121,26 +106,30 @@ class MeanMCStrainEnergyResponseFunction(ResponseFunctionInterface):
             for node in self.primal_model_part.Nodes:
                 sample_gradient[i][node.Id] = node.GetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY)
 
-        
-        # Calculate the mean value of the response
-        value = np.mean(sample_value, dtype=float)
-
-        # Initialize the mean_gradient dictionary
         mean_gradient = {}
-
-        # Sum the gradients from each sample
         for grad_dict in sample_gradient:
             for node_id, gradient in grad_dict.items():
                 if node_id not in mean_gradient:
                     mean_gradient[node_id] = np.zeros_like(gradient)
                 mean_gradient[node_id] += gradient
-
-        # Average the gradients by dividing by the number of samples
         for node_id in mean_gradient:
             mean_gradient[node_id] /= self.num_samples
 
+        # Calculate the mean value of the response
+        value = np.var(sample_value, dtype=float)
+
+        # Initialize the mean_gradient dictionary
+        variance_gradient = {node_id: np.zeros_like(gradient) for node_id in mean_gradient}
+
+        # Sum the gradients from each sample
+        for grad_dict in sample_gradient:
+            for node_id, gradient in grad_dict.items():
+                gradient_np = np.array(gradient)  # Convert Kratos.Array3 to NumPy array
+                mean_gradient_np = np.array(mean_gradient[node_id])  # Convert mean gradient to NumPy array
+                variance_gradient[node_id] += (gradient_np - mean_gradient_np) ** 2
+
         # Set the gradient to the mean gradient
-        gradient = mean_gradient
+        gradient = variance_gradient
 
         for node in self.primal_model_part.Nodes:
             node.SetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY,gradient[node.Id])

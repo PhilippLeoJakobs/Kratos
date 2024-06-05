@@ -15,6 +15,7 @@ from . import face_angle
 from . import airfoil_2d_responses
 from . import total_volume
 from . import mean_mc_strain_energy
+from . import var_mc_strain_energy
 
 def CreateResponseFunction(response_id, response_settings, model):
     response_type = response_settings["response_type"].GetString()
@@ -37,6 +38,8 @@ def CreateResponseFunction(response_id, response_settings, model):
         return total_volume.TotalVolume(response_id, response_settings, model)
     elif response_type == "mean_mc_strain_energy":
         return mean_mc_strain_energy.MeanMCStrainEnergyResponseFunction(response_id, response_settings, model)
+    elif response_type == "var_mc_strain_energy":
+        return var_mc_strain_energy.VarianceMCStrainEnergyResponseFunction(response_id, response_settings, model)
     else:
         raise NameError("The type of the following response function is not specified: "+ response_id +
                         ".\nAvailable types are: 'plane_based_packaging', 'mesh_based_packaging', 'face_angle', " +
