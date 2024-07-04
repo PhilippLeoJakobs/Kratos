@@ -3,165 +3,71 @@ from KratosMultiphysics import Parameters, Logger
 from KratosMultiphysics.response_functions.response_function_interface import ResponseFunctionInterface
 import KratosMultiphysics.StructuralMechanicsApplication as StructuralMechanicsApplication
 from KratosMultiphysics.StructuralMechanicsApplication.structural_mechanics_analysis import StructuralMechanicsAnalysis
-from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_downward_vector
-
-
+from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors, generate_distribution
+import matplotlib.pyplot as plt
+import seaborn as sns
+import csv
+import chaospy as cp
 import numpy as np
 import time as timer
+from .uq_strain_energy_response import UQStrainEnergyResponseFunction, ModifyPointLoads
 
-
-def _GetModelPart(model, solver_settings):
-    #TODO can be removed once model is fully available
-    model_part_name = solver_settings["model_part_name"].GetString()
-    if not model.HasModelPart(model_part_name):
-        model_part = model.CreateModelPart(model_part_name, 2)
-        domain_size = solver_settings["domain_size"].GetInt()
-        if domain_size < 0:
-            raise Exception('Please specify a "domain_size" >= 0!')
-        model_part.ProcessInfo.SetValue(KratosMultiphysics.DOMAIN_SIZE, domain_size)
-    else:
-        model_part = model.GetModelPart(model_part_name)
-
-    return model_part
-
-
-def ModifyPointLoads(mp, new_load_x):
-    smp = mp.GetSubModelPart("PointLoad3D_load")
-    for node in smp.Nodes:
-        node.SetSolutionStepValue(StructuralMechanicsApplication.POINT_LOAD,0,new_load_x)
-
-
-
-# ==============================================================================
-class MeanMCStrainEnergyResponseFunction(ResponseFunctionInterface):
-    """Linear strain energy response function. It triggers the primal analysis and
-    uses the primal analysis results to calculate response value and gradient.
-
-    Attributes
-    ----------
-    primal_model_part : Model part of the primal analysis object
-    primal_analysis : Primal analysis object of the response function
-    response_function_utility: Cpp utilities object doing the actual computation of response value and gradient.
-    """
-
+class MeanMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
     def __init__(self, identifier, response_settings, model):
-        self.identifier = identifier
-        self.response_settings=response_settings
-        with open(response_settings["primal_settings"].GetString()) as parameters_file:
-            ProjectParametersPrimal = Parameters(parameters_file.read())
-        self.ProjectParametersPrimal=ProjectParametersPrimal
-        self.primal_model_part = _GetModelPart(model, ProjectParametersPrimal["solver_settings"])
-        self.model=model
-        self.primal_analysis = StructuralMechanicsAnalysis(self.model, ProjectParametersPrimal)
-        self.primal_model_part.AddNodalSolutionStepVariable(KratosMultiphysics.SHAPE_SENSITIVITY)
-
-        self.sampling_strategy=response_settings["sampling_strategy"].GetString()
-        self.num_samples =response_settings["num_samples"].GetInt()
-
-        self.response_function_utility = StructuralMechanicsApplication.StrainEnergyResponseFunctionUtility(self.primal_model_part, response_settings)
-
-    def Initialize(self):
-        self.primal_analysis.Initialize()
-        self.response_function_utility.Initialize()
-
-    def InitializeSolutionStep(self):
-
-        self.primal_analysis.time = self.primal_analysis._GetSolver().AdvanceInTime(self.primal_analysis.time)
-        self.primal_analysis.InitializeSolutionStep()
+        super().__init__(identifier, response_settings, model)
+        self.sampling_strategy = response_settings["sampling_strategy"].GetString()
+        self.num_samples = response_settings["num_samples"].GetInt()
+        self.extra_samples = response_settings["extra_samples"].GetInt()
 
     def CalculateValue(self):
-        Logger.PrintInfo("StrainEnergyResponse", "Starting primal analysis for response", self.identifier,"Strategy is:",self. sampling_strategy)
-       
-
+        Logger.PrintInfo("StrainEnergyResponse", "Starting primal analysis for response", self.identifier, "Strategy is:", self.sampling_strategy)
         startTime = timer.time()
-        
-        Logger.PrintInfo("StrainEnergyResponse", "Time needed for solving the primal analysis",round(timer.time() - startTime,2),"s")
-
+        Logger.PrintInfo("StrainEnergyResponse", "Time needed for solving the primal analysis", round(timer.time() - startTime, 2), "s")
         startTime = timer.time()
 
-        samples =generate_downward_vector(100000,self.num_samples,self.sampling_strategy)
+        distribution = generate_distribution(self.distribution_parameters)
+        sample_angles = generate_samples(distribution, self.num_samples, self.sampling_strategy)
+        samples = calculate_force_vectors(sample_angles, magnitude=100000)
+
         sample_value = np.zeros(self.num_samples)
         sample_gradient = [{} for _ in range(self.num_samples)]
 
         for i in range(self.num_samples):
             x_val = samples[i]
             Logger.PrintInfo(x_val)
-            
-            # Modify point loads based on random values
             ModifyPointLoads(self.primal_model_part, x_val)
-            
-            # Perform structural analysis
-            #self.primal_analysis = StructuralMechanicsAnalysis(self.model, self.ProjectParametersPrimal)
             self.primal_analysis._GetSolver().Predict()
             self.primal_analysis._GetSolver().SolveSolutionStep()
-            
-            # Initialize and calculate the response function value
-            self.response_function_utility = StructuralMechanicsApplication.StrainEnergyResponseFunctionUtility(self.primal_model_part, self.response_settings)
             self.response_function_utility.Initialize()
             sample_value[i] = self.response_function_utility.CalculateValue()
-            
-            # Store the response value in the model part
             self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE] = sample_value[i]
-            
-            # Calculate the gradient
             self.response_function_utility.CalculateGradient()
-            
-            # Store the gradient for each node
+
             for node in self.primal_model_part.Nodes:
                 sample_gradient[i][node.Id] = node.GetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY)
 
-        
-        # Calculate the mean value of the response
         value = np.mean(sample_value, dtype=float)
         Logger.PrintInfo(value)
-        # Initialize the mean_gradient dictionary
         mean_gradient = {}
 
-        # Sum the gradients from each sample
         for grad_dict in sample_gradient:
             for node_id, gradient in grad_dict.items():
                 if node_id not in mean_gradient:
                     mean_gradient[node_id] = np.zeros_like(gradient)
                 mean_gradient[node_id] += gradient
 
-        # Average the gradients by dividing by the number of samples
         for node_id in mean_gradient:
             mean_gradient[node_id] /= self.num_samples
 
-        # Set the gradient to the mean gradient
         gradient = mean_gradient
 
         for node in self.primal_model_part.Nodes:
-            node.SetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY,gradient[node.Id])
-        
+            node.SetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY, gradient[node.Id])
 
         self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE] = value
-        Logger.PrintInfo("StrainEnergyResponse", "Time needed for calculating the response value",round(timer.time() - startTime,2),"s")
+        Logger.PrintInfo("StrainEnergyResponse", "Time needed for calculating the response value", round(timer.time() - startTime, 2), "s")
 
     def CalculateGradient(self):
         Logger.PrintInfo("StrainEnergyResponse", "Starting gradient calculation for response", self.identifier)
-
         startTime = timer.time()
-
-        Logger.PrintInfo("StrainEnergyResponse", "Time needed for calculating gradients",round(timer.time() - startTime,2),"s")
-
-    def FinalizeSolutionStep(self):
-        self.primal_analysis.FinalizeSolutionStep()
-        self.primal_analysis.OutputSolutionStep()
-
-    def Finalize(self):
-        self.primal_analysis.Finalize()
-
-    def GetValue(self):
-        return self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE]
-
-    def GetNodalGradient(self, variable):
-        if variable != KratosMultiphysics.SHAPE_SENSITIVITY:
-            raise RuntimeError("GetNodalGradient: No gradient for {}!".format(variable.Name))
-        gradient = {}
-        for node in self.primal_model_part.Nodes:
-            gradient[node.Id] = node.GetSolutionStepValue(variable)
-        return gradient
-
-    def GetElementalGradient(self, variable):
-        raise NotImplementedError("GetElementalGradient needs to be implemented for StrainEnergyResponseFunction")
+        Logger.PrintInfo("StrainEnergyResponse", "Time needed for calculating gradients", round(timer.time() - startTime, 2), "s")

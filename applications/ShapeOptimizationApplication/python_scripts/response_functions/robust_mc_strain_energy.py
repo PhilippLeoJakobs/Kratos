@@ -12,12 +12,14 @@ import numpy as np
 import time as timer
 from .uq_strain_energy_response import UQStrainEnergyResponseFunction, ModifyPointLoads
 
-class VarMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
+class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
     def __init__(self, identifier, response_settings, model):
         super().__init__(identifier, response_settings, model)
         self.sampling_strategy = response_settings["sampling_strategy"].GetString()
         self.num_samples = response_settings["num_samples"].GetInt()
         self.extra_samples = response_settings["extra_samples"].GetInt()
+        self.mean_weight = response_settings["mean_weight"].GetDouble()
+        self.std_weight = response_settings["std_weight"].GetDouble()
 
     def CalculateValue(self):
         Logger.PrintInfo("StrainEnergyResponse", "Starting primal analysis for response", self.identifier, "Strategy is:", self.sampling_strategy)
@@ -67,26 +69,24 @@ class VarMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
             for i in range(self.num_samples):
                 deviation_value = (sample_value[i] - mean_value)
                 deviation_gradient = sample_gradient[i][node_id] - mean_gradient[node_id]
-                std_gradient[node_id] += deviation_value * (deviation_gradient**2)
-            std_gradient[node_id] /= (self.num_samples * std_value)
+                std_gradient[node_id][0] += deviation_value * (deviation_gradient[0] ** 2)
+                std_gradient[node_id][1] += deviation_value * (deviation_gradient[1] ** 2)
+                std_gradient[node_id][2] += deviation_value * (deviation_gradient[2] ** 2)
 
-        gradient = std_gradient
+            std_gradient[node_id][0] /= (self.num_samples * std_value)
+            std_gradient[node_id][1] /= (self.num_samples * std_value)
+            std_gradient[node_id][2] /= (self.num_samples * std_value)
 
-        for node in self.primal_model_part.Nodes:
-            node.SetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY, gradient[node.Id])
+        weighted_value = self.mean_weight * mean_value + self.std_weight * std_value
+        weighted_gradient = {}
 
-        self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE] = mean_value
-        Logger.PrintInfo("StrainEnergyResponse", "Time needed for calculating the response value", round(timer.time() - startTime, 2), "s")
-
-
-
-
-        gradient = mean_gradient
+        for node_id in mean_gradient:
+            weighted_gradient[node_id] = self.mean_weight * mean_gradient[node_id] + self.std_weight * std_gradient[node_id]
 
         for node in self.primal_model_part.Nodes:
-            node.SetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY, gradient[node.Id])
+            node.SetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY, weighted_gradient[node.Id])
 
-        self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE] = value
+        self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE] = weighted_value
         Logger.PrintInfo("StrainEnergyResponse", "Time needed for calculating the response value", round(timer.time() - startTime, 2), "s")
 
     def CalculateGradient(self):
