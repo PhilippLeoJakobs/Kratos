@@ -76,14 +76,12 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         for node_id, pce_model_gradient in gradient_models.items():
             mean_gradient = cp.E(pce_model_gradient, distribution)
 
-            # Calculate the gradient of the standard deviation
-            std_dev_gradient = np.zeros_like(mean_gradient)
-            pce_coefficients = pce_model_gradient.coefficients
-            if std_dev > 0:
-                for r, coeff in enumerate(pce_coefficients):
-                    for k in range(self.num_samples):
-                        std_dev_gradient += (coeff ** 2) * (samples_array[r, k] ** 2) * sample_gradient[k][node_id]
-                std_dev_gradient /= std_dev
+            # Calculate the gradient of the standard deviation using the chain rule
+            variance_gradient = np.zeros_like(mean_gradient)
+            for i in range(len(mean_gradient)):
+                variance_gradient[i] = 2 * cp.E(pce_model_gradient[i] * (pce_model_value - mean_value), distribution)
+
+            std_dev_gradient = variance_gradient / (2 * std_dev)
 
             robust_gradient[node_id] = self.mean_weight * mean_gradient + self.std_weight * std_dev_gradient
 

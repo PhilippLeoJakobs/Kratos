@@ -69,13 +69,9 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
             for i in range(self.num_samples):
                 deviation_value = (sample_value[i] - mean_value)
                 deviation_gradient = sample_gradient[i][node_id] - mean_gradient[node_id]
-                std_gradient[node_id][0] += deviation_value * (deviation_gradient[0] ** 2)
-                std_gradient[node_id][1] += deviation_value * (deviation_gradient[1] ** 2)
-                std_gradient[node_id][2] += deviation_value * (deviation_gradient[2] ** 2)
+                std_gradient[node_id] += deviation_value * deviation_gradient
 
-            std_gradient[node_id][0] /= (self.num_samples * std_value)
-            std_gradient[node_id][1] /= (self.num_samples * std_value)
-            std_gradient[node_id][2] /= (self.num_samples * std_value)
+            std_gradient[node_id] /= (self.num_samples * std_value)
 
         weighted_value = self.mean_weight * mean_value + self.std_weight * std_value
         weighted_gradient = {}
