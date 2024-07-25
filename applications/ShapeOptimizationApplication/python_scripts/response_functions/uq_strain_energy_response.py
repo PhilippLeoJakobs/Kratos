@@ -3,7 +3,7 @@ from KratosMultiphysics import Parameters, Logger
 from KratosMultiphysics.response_functions.response_function_interface import ResponseFunctionInterface
 import KratosMultiphysics.StructuralMechanicsApplication as StructuralMechanicsApplication
 from KratosMultiphysics.StructuralMechanicsApplication.structural_mechanics_analysis import StructuralMechanicsAnalysis
-from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors, generate_distribution
+from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors_x,calculate_force_vectors_z, generate_distribution
 import matplotlib.pyplot as plt
 import seaborn as sns
 import csv
@@ -66,7 +66,13 @@ class UQStrainEnergyResponseFunction(ResponseFunctionInterface):
         extra_samples =  self.extra_samples
         distribution = generate_distribution(self.distribution_parameters)
         additional_sample_angles = generate_samples(distribution, extra_samples, "latin_hypercube")
-        additional_sample_force = calculate_force_vectors(additional_sample_angles, magnitude=100000)
+         # Choose the appropriate force vector calculation function
+        if self.force_direction.lower() == 'x':
+            additional_sample_force = calculate_force_vectors_x(additional_sample_angles, magnitude=100000)
+        elif self.force_direction.lower() == 'z':
+            additional_sample_force = calculate_force_vectors_z(additional_sample_angles, magnitude=100000)
+        else:
+            raise ValueError(f"Unknown force direction: {self.force_direction}")
         additional_values = np.zeros(extra_samples)
 
         for i in range(extra_samples):

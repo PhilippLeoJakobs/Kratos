@@ -34,7 +34,7 @@ def generate_samples(distribution, num_samples=1, strategy="random"):
     return samples
 
 
-def calculate_force_vectors(samples, magnitude=100000):
+def calculate_force_vectors_z(samples, magnitude=100000):
     """
     Calculate force vectors from the given samples.
     
@@ -62,6 +62,38 @@ def calculate_force_vectors(samples, magnitude=100000):
         vectors.append([x_component, y_component, z_component])
     
     return np.array(vectors)
+
+import numpy as np
+
+def calculate_force_vectors_x(samples, magnitude=100000):
+    """
+    Calculate force vectors with a variation around the negative x direction from the given samples.
+    
+    Parameters:
+        samples: np.ndarray
+            The samples containing angles in degrees.
+        magnitude: float
+            The magnitude of the force vector.
+    
+    Returns:
+        np.ndarray
+            Calculated force vectors.
+    """
+    vectors = []
+    for angle_yz_deg, angle_zx_deg in samples:
+        # Convert angles to radians
+        angle_yz_rad = np.radians(angle_yz_deg)
+        angle_zx_rad = np.radians(angle_zx_deg)
+        
+        # Calculate the components of the vector
+        x_component = -1 * magnitude * np.cos(angle_yz_rad) * np.cos(angle_zx_rad)
+        y_component = magnitude * np.sin(angle_yz_rad)
+        z_component = magnitude * np.sin(angle_zx_rad)
+        
+        vectors.append([x_component, y_component, z_component])
+    
+    return np.array(vectors)
+
 
 def generate_distribution(distribution_parameters):
     distribution_type = distribution_parameters["type"].GetString()

@@ -3,7 +3,7 @@ from KratosMultiphysics import Parameters, Logger
 from KratosMultiphysics.response_functions.response_function_interface import ResponseFunctionInterface
 import KratosMultiphysics.StructuralMechanicsApplication as StructuralMechanicsApplication
 from KratosMultiphysics.StructuralMechanicsApplication.structural_mechanics_analysis import StructuralMechanicsAnalysis
-from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors, generate_distribution
+from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors_x, calculate_force_vectors_z, generate_distribution
 import matplotlib.pyplot as plt
 import seaborn as sns
 import csv
@@ -18,6 +18,7 @@ class MeanMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         self.sampling_strategy = response_settings["sampling_strategy"].GetString()
         self.num_samples = response_settings["num_samples"].GetInt()
         self.extra_samples = response_settings["extra_samples"].GetInt()
+        self.force_direction = response_settings["force_direction"].GetString()
 
     def CalculateValue(self):
         Logger.PrintInfo("StrainEnergyResponse", "Starting primal analysis for response", self.identifier, "Strategy is:", self.sampling_strategy)
@@ -27,7 +28,13 @@ class MeanMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
 
         distribution = generate_distribution(self.distribution_parameters)
         sample_angles = generate_samples(distribution, self.num_samples, self.sampling_strategy)
-        samples = calculate_force_vectors(sample_angles, magnitude=100000)
+                # Choose the appropriate force vector calculation function
+        if self.force_direction.lower() == 'x':
+            samples = calculate_force_vectors_x(sample_angles, magnitude=100000)
+        elif self.force_direction.lower() == 'z':
+            samples = calculate_force_vectors_z(sample_angles, magnitude=100000)
+        else:
+            raise ValueError(f"Unknown force direction: {self.force_direction}")
 
         sample_value = np.zeros(self.num_samples)
         sample_gradient = [{} for _ in range(self.num_samples)]
