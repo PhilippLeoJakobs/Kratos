@@ -95,6 +95,46 @@ def calculate_force_vectors_x(samples, magnitude=100000):
     return np.array(vectors)
 
 
+def calculate_force_vectors_xz(samples, magnitude=100000):
+    """
+    Calculate force vectors with a variation around the diagonal in the negative x and z direction
+    from the given samples.
+    
+    Parameters:
+        samples: np.ndarray
+            The samples containing angles in degrees.
+        magnitude: float
+            The magnitude of the force vector.
+    
+    Returns:
+        np.ndarray
+            Calculated force vectors.
+    """
+    # Base vector in the negative x and z direction
+    base_vector = np.array([-1, 0, -1])
+    base_vector = base_vector / np.linalg.norm(base_vector)  # Normalize the base vector
+    
+    vectors = []
+    for angle_xy_deg, angle_zy_deg in samples:
+        # Convert angles to radians
+        angle_xy_rad = np.radians(angle_xy_deg)
+        angle_zy_rad = np.radians(angle_zy_deg)
+        
+        # Calculate the perturbation components based on the angles
+        perturb_x = np.sin(angle_xy_rad) * np.cos(angle_zy_rad)
+        perturb_y = np.sin(angle_zy_rad)
+        perturb_z = np.cos(angle_xy_rad) * np.cos(angle_zy_rad)
+        
+        # Perturbation vector
+        perturbation_vector = np.array([perturb_x, perturb_y, perturb_z])
+        
+        # Force vector is the combination of the base vector and the perturbation, scaled by the magnitude
+        force_vector = magnitude * (base_vector + perturbation_vector)
+        
+        vectors.append(force_vector)
+    
+    return np.array(vectors)
+
 def generate_distribution(distribution_parameters):
     distribution_type = distribution_parameters["type"].GetString()
     

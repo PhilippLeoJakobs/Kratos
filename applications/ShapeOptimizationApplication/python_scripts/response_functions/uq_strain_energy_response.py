@@ -23,8 +23,8 @@ def _GetModelPart(model, solver_settings):
         model_part = model.GetModelPart(model_part_name)
     return model_part
 
-def ModifyPointLoads(mp, new_load_x):
-    smp = mp.GetSubModelPart("PointLoad3D_load")
+def ModifyPointLoads(mp, new_load_x,load_name="PointLoad3D_load"):
+    smp = mp.GetSubModelPart(load_name)
     for node in smp.Nodes:
         node.SetSolutionStepValue(StructuralMechanicsApplication.POINT_LOAD,0,new_load_x)
 
