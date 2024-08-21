@@ -3,14 +3,14 @@ from KratosMultiphysics import Parameters, Logger
 from KratosMultiphysics.response_functions.response_function_interface import ResponseFunctionInterface
 import KratosMultiphysics.StructuralMechanicsApplication as StructuralMechanicsApplication
 from KratosMultiphysics.StructuralMechanicsApplication.structural_mechanics_analysis import StructuralMechanicsAnalysis
-from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors_x, calculate_force_vectors_z, calculate_force_vectors_xz,generate_distribution
+from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors_x,calculate_force_vectors_pos_z, calculate_force_vectors_z, calculate_force_vectors_xz,generate_distribution
 import matplotlib.pyplot as plt
 import seaborn as sns
 import csv
 import chaospy as cp
 import numpy as np
 import time as timer
-from .uq_strain_energy_response import UQStrainEnergyResponseFunction, ModifyPointLoads
+from .uq_strain_energy_response import UQStrainEnergyResponseFunction, ModifyPointLoads, ModifySurfaceLoads
 
 class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
     def __init__(self, identifier, response_settings, model):
@@ -22,6 +22,8 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         self.mean_weight = response_settings["mean_weight"].GetDouble()
         self.std_weight = response_settings["std_weight"].GetDouble()
         self.force_direction = response_settings.Has("force_direction") and response_settings["force_direction"].GetString() or "z"
+        self.load_type = response_settings.Has("load_type") and response_settings["load_type"].GetString() or "PointLoad"
+        self.load_magnitude = response_settings.Has("load_magnitude") and response_settings["load_magnitude"].GetInt() or 100000
         self.csv_filename = "mc_response_values.csv"  # Define your CSV file name here
 
     def CalculateValue(self):
@@ -34,11 +36,13 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         sample_angles = generate_samples(distribution, self.num_samples, self.sampling_strategy)
         # Choose the appropriate force vector calculation function
         if self.force_direction.lower() == 'x':
-            samples = calculate_force_vectors_x(sample_angles, magnitude=100000)
+            samples = calculate_force_vectors_x(sample_angles,  self.load_magnitude)
         elif self.force_direction.lower() == 'z':
-            samples = calculate_force_vectors_z(sample_angles, magnitude=100000)
+            samples = calculate_force_vectors_z(sample_angles,  self.load_magnitude)
+        elif self.force_direction.lower() == '+z':
+            samples = calculate_force_vectors_pos_z(sample_angles, self.load_magnitude)
         elif self.force_direction.lower() == 'xz':
-            samples = calculate_force_vectors_xz(sample_angles, magnitude=50000)
+            samples = calculate_force_vectors_xz(sample_angles,  self.load_magnitude)
         else:
             raise ValueError(f"Unknown force direction: {self.force_direction}")
 
@@ -48,11 +52,17 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         for i in range(self.num_samples):
             x_val = samples[i]
             Logger.PrintInfo(x_val)
-            ModifyPointLoads(self.primal_model_part, x_val,self.load_name)
+            if self.load_type == "PointLoad":
+                ModifyPointLoads(self.primal_model_part, x_val,self.load_name)
+            elif self.load_type == "SurfaceLoad":
+                ModifySurfaceLoads(self.primal_model_part, x_val,self.load_name)
+            else:
+                raise ValueError(f"Unknown load_type: {self.load_type}")
             self.primal_analysis._GetSolver().Predict()
             self.primal_analysis._GetSolver().SolveSolutionStep()
             self.response_function_utility.Initialize()
             sample_value[i] = self.response_function_utility.CalculateValue()
+            Logger.PrintInfo(sample_value[i])
             self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE] = sample_value[i]
             self.response_function_utility.CalculateGradient()
 
@@ -108,4 +118,3 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         Logger.PrintInfo("StrainEnergyResponse", "Starting gradient calculation for response", self.identifier)
         startTime = timer.time()
         Logger.PrintInfo("StrainEnergyResponse", "Time needed for calculating gradients", round(timer.time() - startTime, 2), "s")
- 

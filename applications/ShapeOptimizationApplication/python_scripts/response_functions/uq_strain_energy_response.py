@@ -23,10 +23,30 @@ def _GetModelPart(model, solver_settings):
         model_part = model.GetModelPart(model_part_name)
     return model_part
 
-def ModifyPointLoads(mp, new_load_x,load_name="PointLoad3D_load"):
+def ModifyPointLoads(mp, new_load,load_name="PointLoad3D_load"):
     smp = mp.GetSubModelPart(load_name)
     for node in smp.Nodes:
-        node.SetSolutionStepValue(StructuralMechanicsApplication.POINT_LOAD,0,new_load_x)
+        node.SetSolutionStepValue(StructuralMechanicsApplication.POINT_LOAD,0,new_load)
+
+from KratosMultiphysics import Parameters
+from KratosMultiphysics.StructuralMechanicsApplication import DistributeLoadOnSurfaceProcess
+
+def ModifySurfaceLoads(mp, new_load, load_name):
+    smp = mp.GetSubModelPart(load_name)
+
+    for cond in smp.Conditions:
+        # Retrieve the geometry of the condition
+        geometry = cond.GetGeometry()
+
+        # Calculate the area of the condition's geometry
+        area = geometry.Area()
+
+        # Divide the load by the area to get the distributed load
+        distributed_load = [value / area for value in new_load]
+
+        # Apply the distributed load to the condition
+        cond.SetValue(StructuralMechanicsApplication.SURFACE_LOAD, distributed_load)
+
 
 class UQStrainEnergyResponseFunction(ResponseFunctionInterface):
     def __init__(self, identifier, response_settings, model):

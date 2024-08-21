@@ -3,14 +3,14 @@ from KratosMultiphysics import Parameters, Logger
 from KratosMultiphysics.response_functions.response_function_interface import ResponseFunctionInterface
 import KratosMultiphysics.StructuralMechanicsApplication as StructuralMechanicsApplication
 from KratosMultiphysics.StructuralMechanicsApplication.structural_mechanics_analysis import StructuralMechanicsAnalysis
-from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors_x, calculate_force_vectors_z, calculate_force_vectors_xz,generate_distribution
+from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors_x, calculate_force_vectors_pos_z, calculate_force_vectors_z, calculate_force_vectors_xz,generate_distribution
 import matplotlib.pyplot as plt
 import seaborn as sns
 import csv
 import chaospy as cp
 import numpy as np
 import time as timer
-from .uq_strain_energy_response import UQStrainEnergyResponseFunction, ModifyPointLoads
+from .uq_strain_energy_response import UQStrainEnergyResponseFunction, ModifyPointLoads, ModifySurfaceLoads
 
 class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
     def __init__(self, identifier, response_settings, model):
@@ -23,6 +23,8 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         self.std_weight = response_settings["std_weight"].GetDouble()
         self.load_name = response_settings.Has("load_name") and response_settings["load_name"].GetString() or "PointLoad3D_load"  # Default to "PointLoad3D_load"
         self.force_direction = response_settings.Has("force_direction") and response_settings["force_direction"].GetString() or "z"
+        self.load_type = response_settings.Has("load_type") and response_settings["load_type"].GetString() or "PointLoad"
+        self.load_magnitude = response_settings.Has("load_magnitude") and response_settings["load_magnitude"].GetInt() or 100000
         self.csv_filename = "response_values.csv"  # Define your CSV file name here
 
     def CalculateValue(self):
@@ -35,11 +37,13 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         sample_angles = generate_samples(distribution, self.num_samples, self.sampling_strategy)
 
         if self.force_direction.lower() == 'x':
-            sample_force = calculate_force_vectors_x(sample_angles, magnitude=100000)
+            sample_force = calculate_force_vectors_x(sample_angles, self.load_magnitude)
         elif self.force_direction.lower() == 'z':
-            sample_force = calculate_force_vectors_z(sample_angles, magnitude=100000)
+            sample_force = calculate_force_vectors_z(sample_angles, self.load_magnitude)
+        elif self.force_direction.lower() == '+z':
+            sample_force = calculate_force_vectors_pos_z(sample_angles, self.load_magnitude)
         elif self.force_direction.lower() == 'xz':
-            sample_force = calculate_force_vectors_xz(sample_angles, magnitude=100000)
+            sample_force = calculate_force_vectors_xz(sample_angles, self.load_magnitude)
         else:
             raise ValueError(f"Unknown force direction: {self.force_direction}")
 
@@ -47,9 +51,15 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         sample_gradient = [{} for _ in range(self.num_samples)]
 
         for i in range(self.num_samples):
+            self.primal_analysis.Initialize()
             x_val = sample_force[i]
             Logger.PrintInfo("Sample value: ", x_val)
-            ModifyPointLoads(self.primal_model_part, x_val,self.load_name)
+            if self.load_type == "PointLoad":
+                ModifyPointLoads(self.primal_model_part, x_val,self.load_name)
+            elif self.load_type == "SurfaceLoad":
+                ModifySurfaceLoads(self.primal_model_part, x_val,self.load_name)
+            else:
+                raise ValueError(f"Unknown load_type: {self.load_type}")
             self.primal_analysis._GetSolver().Predict()
             self.primal_analysis._GetSolver().SolveSolutionStep()
             self.response_function_utility = StructuralMechanicsApplication.StrainEnergyResponseFunctionUtility(self.primal_model_part, self.response_settings)
