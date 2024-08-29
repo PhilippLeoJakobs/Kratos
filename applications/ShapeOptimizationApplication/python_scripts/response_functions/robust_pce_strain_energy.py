@@ -25,7 +25,7 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         self.force_direction = response_settings.Has("force_direction") and response_settings["force_direction"].GetString() or "z"
         self.load_type = response_settings.Has("load_type") and response_settings["load_type"].GetString() or "PointLoad"
         self.load_magnitude = response_settings.Has("load_magnitude") and response_settings["load_magnitude"].GetInt() or 100000
-        self.csv_filename = "response_values.csv"  # Define your CSV file name here
+        self.csv_filename = "pce_values_"+self.load_name+".csv" # Define your CSV file name here
 
     def CalculateValue(self):
         Logger.PrintInfo("RobustPCEStrainEnergyResponseFunction", "Starting primal analysis for response", self.identifier)
@@ -51,7 +51,6 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         sample_gradient = [{} for _ in range(self.num_samples)]
 
         for i in range(self.num_samples):
-            self.primal_analysis.Initialize()
             x_val = sample_force[i]
             Logger.PrintInfo("Sample value: ", x_val)
             if self.load_type == "PointLoad":
@@ -109,6 +108,7 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         with open(self.csv_filename, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([mean_value, std_dev])
+            Logger.PrintInfo("Wrote to log")
 
     def CalculateGradient(self):
         Logger.PrintInfo("RobustPCEStrainEnergyResponseFunction", "Starting gradient calculation for response", self.identifier)
