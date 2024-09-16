@@ -24,7 +24,7 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         self.force_direction = response_settings.Has("force_direction") and response_settings["force_direction"].GetString() or "z"
         self.load_type = response_settings.Has("load_type") and response_settings["load_type"].GetString() or "PointLoad"
         self.load_magnitude = response_settings.Has("load_magnitude") and response_settings["load_magnitude"].GetInt() or 100000
-        self.csv_filename = "mc_response_values.csv"  # Define your CSV file name here
+        self.csv_filename = response_settings["response_type"].GetString()+self.load_name+"+values.csv"  # Define your CSV file name here
 
     def CalculateValue(self):
         Logger.PrintInfo("StrainEnergyResponse", "Starting primal analysis for response", self.identifier, "Strategy is:", self.sampling_strategy)

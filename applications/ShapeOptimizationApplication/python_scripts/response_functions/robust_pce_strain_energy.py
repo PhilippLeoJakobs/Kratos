@@ -51,7 +51,7 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         sample_gradient = [{} for _ in range(self.num_samples)]
 
         for i in range(self.num_samples):
-            self.primal_analysis.Initialize()
+
             x_val = sample_force[i]
             Logger.PrintInfo("Sample value: ", x_val)
             if self.load_type == "PointLoad":
@@ -60,6 +60,7 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
                 ModifySurfaceLoads(self.primal_model_part, x_val,self.load_name)
             else:
                 raise ValueError(f"Unknown load_type: {self.load_type}")
+            self.primal_analysis._GetSolver().Initialize()
             self.primal_analysis._GetSolver().Predict()
             self.primal_analysis._GetSolver().SolveSolutionStep()
             self.response_function_utility = StructuralMechanicsApplication.StrainEnergyResponseFunctionUtility(self.primal_model_part, self.response_settings)
@@ -77,13 +78,16 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         std_dev = np.sqrt(cp.Var(pce_model_value, distribution))
         value = self.mean_weight * mean_value + self.std_weight * std_dev
 
+
+        gradient_start = timer.time()
+
         gradient_models = {}
         for node in self.primal_model_part.Nodes:
             node_gradients = np.array([sample_gradient[i][node.Id] for i in range(self.num_samples)])
             node_gradients = node_gradients.reshape(self.num_samples, -1)
             pce_model_gradient = cp.fit_regression(poly_expansion, samples_array, node_gradients)
             gradient_models[node.Id] = pce_model_gradient
-
+        Logger.PrintInfo("RobustPCEStrainEnergyResponseFunction", "Time needed for gradient models", round(timer.time() - startTime, 2), "s")
         robust_gradient = {}
         for node_id, pce_model_gradient in gradient_models.items():
             mean_gradient = cp.E(pce_model_gradient, distribution)

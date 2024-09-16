@@ -34,6 +34,7 @@ class AlgorithmGradientProjection(OptimizationAlgorithm):
             "max_correction_share"    : 0.75,
             "max_iterations"          : 100,
             "relative_tolerance"      : 1e-3,
+            "absolute_tolerance"      : 10,
             "line_search" : {
                 "line_search_type"           : "manual_stepping",
                 "normalize_search_direction" : true,
@@ -70,6 +71,7 @@ class AlgorithmGradientProjection(OptimizationAlgorithm):
         self.step_size = self.algorithm_settings["line_search"]["step_size"].GetDouble()
         self.max_iterations = self.algorithm_settings["max_iterations"].GetInt() + 1
         self.relative_tolerance = self.algorithm_settings["relative_tolerance"].GetDouble()
+        self.absolute_tolerance = self.algorithm_settings["absolute_tolerance"].GetDouble()
 
         self.optimization_model_part = model_part_controller.GetOptimizationModelPart()
         self.optimization_model_part.AddNodalSolutionStepVariable(KSO.SEARCH_DIRECTION)
@@ -307,6 +309,18 @@ class AlgorithmGradientProjection(OptimizationAlgorithm):
             if abs(relative_change_of_objective_value) < self.relative_tolerance:
                 KM.Logger.Print("")
                 KM.Logger.PrintInfo("ShapeOpt", "Optimization problem converged within a relative objective tolerance of ",self.relative_tolerance,"%.")
+                return True
+
+            # Check for absolute tolerance
+
+            absolute_change_of_objective_value = self.data_logger.GetValues("abs_change_objective")[self.optimization_iteration]
+
+            if absolute_change_of_objective_value < 0 and abs(absolute_change_of_objective_value) > self.absolute_tolerance:
+
+                KM.Logger.Print("")
+
+                KM.Logger.PrintInfo("ShapeOpt",
+                "Optimization problem converged within a absolute objective tolerance of ",self.absolute_tolerance,"%.")
                 return True
 
     # --------------------------------------------------------------------------

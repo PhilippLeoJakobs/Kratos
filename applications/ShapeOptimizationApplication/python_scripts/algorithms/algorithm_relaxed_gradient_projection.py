@@ -35,6 +35,7 @@ class AlgorithmRelaxedGradientProjection(OptimizationAlgorithm):
             "max_iterations"          : 100,
             "max_inner_iter"          : 100,
             "relative_tolerance"      : 1e-3,
+            "absolute_tolerance"      : 1e-1,       
             "line_search" : {
                 "line_search_type"           : "manual_stepping",
                 "step_size"                  : 1.0
@@ -89,6 +90,7 @@ class AlgorithmRelaxedGradientProjection(OptimizationAlgorithm):
         self.line_search_type = self.algorithm_settings["line_search"]["line_search_type"].GetString()
         self.max_iterations = self.algorithm_settings["max_iterations"].GetInt() + 1
         self.relative_tolerance = self.algorithm_settings["relative_tolerance"].GetDouble()
+        self.absolute_tolerance = self.algorithm_settings["absolute_tolerance"].GetDouble()
         self.s_norm = 0.0
 
         self.max_inner_iter = self.algorithm_settings["max_inner_iter"].GetDouble()
@@ -571,6 +573,15 @@ class AlgorithmRelaxedGradientProjection(OptimizationAlgorithm):
                 Kratos.Logger.Print("")
                 Kratos.Logger.PrintInfo("ShapeOpt", "Optimization problem converged within a relative objective tolerance of ",self.relative_tolerance,"%.")
                 return True
+            absolute_change_of_objective_value = self.data_logger.GetValues("abs_change_objective")[self.optimization_iteration]
+            if absolute_change_of_objective_value < 0 and abs(absolute_change_of_objective_value) > self.absolute_tolerance:
+
+                Kratos.Logger.Print("")
+
+                Kratos.Logger.PrintInfo("ShapeOpt",
+                "Optimization problem converged within a absolute objective tolerance of ",self.absolute_tolerance,"%.")
+                return True
+
 
     # --------------------------------------------------------------------------
     def __determineAbsoluteChanges(self):

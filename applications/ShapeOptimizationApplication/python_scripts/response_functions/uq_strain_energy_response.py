@@ -3,7 +3,7 @@ from KratosMultiphysics import Parameters, Logger
 from KratosMultiphysics.response_functions.response_function_interface import ResponseFunctionInterface
 import KratosMultiphysics.StructuralMechanicsApplication as StructuralMechanicsApplication
 from KratosMultiphysics.StructuralMechanicsApplication.structural_mechanics_analysis import StructuralMechanicsAnalysis
-from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors_x,calculate_force_vectors_z, generate_distribution
+from KratosMultiphysics.ShapeOptimizationApplication.utilities.custom_uq_tools import generate_samples, calculate_force_vectors_x,calculate_force_vectors_pos_z,calculate_force_vectors_xz,calculate_force_vectors_z, generate_distribution
 import matplotlib.pyplot as plt
 import seaborn as sns
 import csv
@@ -61,6 +61,7 @@ class UQStrainEnergyResponseFunction(ResponseFunctionInterface):
         self.primal_analysis = StructuralMechanicsAnalysis(self.model, ProjectParametersPrimal)
         self.primal_model_part.AddNodalSolutionStepVariable(KratosMultiphysics.SHAPE_SENSITIVITY)
         self.response_function_utility = StructuralMechanicsApplication.StrainEnergyResponseFunctionUtility(self.primal_model_part, response_settings)
+        self.filename=self.response_settings["response_type"].GetString()+self.response_settings["force_direction"].GetString()+"_additional.csv"
 
     def Initialize(self):
         self.primal_analysis.Initialize()
@@ -88,23 +89,32 @@ class UQStrainEnergyResponseFunction(ResponseFunctionInterface):
         additional_sample_angles = generate_samples(distribution, extra_samples, "latin_hypercube")
          # Choose the appropriate force vector calculation function
         if self.force_direction.lower() == 'x':
-            additional_sample_force = calculate_force_vectors_x(additional_sample_angles, magnitude=100000)
+            additional_sample_force = calculate_force_vectors_x(additional_sample_angles,  self.load_magnitude)
         elif self.force_direction.lower() == 'z':
-            additional_sample_force = calculate_force_vectors_z(additional_sample_angles, magnitude=100000)
+            additional_sample_force = calculate_force_vectors_z(additional_sample_angles,  self.load_magnitude)
+        elif self.force_direction.lower() == '+z':
+            additional_sample_force = calculate_force_vectors_pos_z(additional_sample_angles, self.load_magnitude)
+        elif self.force_direction.lower() == 'xz':
+            additional_sample_force = calculate_force_vectors_xz(additional_sample_angles,  self.load_magnitude)
         else:
             raise ValueError(f"Unknown force direction: {self.force_direction}")
         additional_values = np.zeros(extra_samples)
 
         for i in range(extra_samples):
             x_val = additional_sample_force[i]
-            ModifyPointLoads(self.primal_model_part, x_val)
+            if self.load_type == "PointLoad":
+                ModifyPointLoads(self.primal_model_part, x_val,self.load_name)
+            elif self.load_type == "SurfaceLoad":
+                ModifySurfaceLoads(self.primal_model_part, x_val,self.load_name)
+            else:
+                raise ValueError(f"Unknown load_type: {self.load_type}")
             self.primal_analysis._GetSolver().Predict()
             self.primal_analysis._GetSolver().SolveSolutionStep()
             self.response_function_utility = StructuralMechanicsApplication.StrainEnergyResponseFunctionUtility(self.primal_model_part, self.response_settings)
             self.response_function_utility.Initialize()
             additional_values[i] = self.response_function_utility.CalculateValue()
 
-        self.SaveToCSV(additional_values)
+        self.SaveToCSV(additional_values,self.filename)
         self.GenerateViolinPlot(additional_values)
         self.primal_analysis.Finalize()
 
@@ -121,7 +131,6 @@ class UQStrainEnergyResponseFunction(ResponseFunctionInterface):
         plt.title('Violin Plot of Objective Function')
         plt.xlabel('Sample Index')
         plt.ylabel('Objective Value')
-        plt.show()
 
     def GetValue(self):
         return self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE]

@@ -125,45 +125,60 @@ def calculate_force_vectors_x(samples, magnitude=100000):
     return np.array(vectors)
 
 
-def calculate_force_vectors_xz(samples, magnitude=100000):
+def rotate_vectors_y(vectors, angle_deg):
     """
-    Calculate force vectors with a variation around the diagonal in the negative x and z direction
-    from the given samples.
+    Rotate the given vectors by a specified angle around the y-axis.
+
+    Parameters:
+        vectors: np.ndarray
+            The vectors to be rotated.
+        angle_deg: float
+            The angle in degrees by which to rotate the vectors.
+
+    Returns:
+        np.ndarray
+            The rotated vectors.
+    """
+    angle_rad = np.radians(angle_deg)
+    cos_angle = np.cos(angle_rad)
+    sin_angle = np.sin(angle_rad)
+
+    # Rotation matrix for rotation around the y-axis
+    rotation_matrix = np.array([
+        [cos_angle, 0, -sin_angle],
+        [0, 1, 0],
+        [sin_angle, 0, cos_angle]
+    ])
+
+    # Apply the rotation matrix to each vector
+    rotated_vectors = np.dot(vectors, rotation_matrix.T)
+
+    return rotated_vectors
+
+def calculate_force_vectors_xz(samples, magnitude=100000, rotation_angle=45):
+    """
+    Calculate force vectors with a variation around the negative x direction from the given samples,
+    and rotate the resulting vectors by a specified angle around the y-axis.
 
     Parameters:
         samples: np.ndarray
             The samples containing angles in degrees.
         magnitude: float
             The magnitude of the force vector.
+        rotation_angle: float
+            The angle in degrees to rotate the vectors around the y-axis.
 
     Returns:
         np.ndarray
-            Calculated force vectors.
+            The rotated force vectors.
     """
-    # Base vector in the negative x and z direction
-    base_vector = np.array([-1, 0, -1])
-    base_vector = base_vector / np.linalg.norm(base_vector)  # Normalize the base vector
+    # Calculate the force vectors
+    vectors = calculate_force_vectors_x(samples, magnitude)
 
-    vectors = []
-    for angle_xy_deg, angle_zy_deg in samples:
-        # Convert angles to radians
-        angle_xy_rad = np.radians(angle_xy_deg)
-        angle_zy_rad = np.radians(angle_zy_deg)
+    # Rotate the vectors
+    rotated_vectors = rotate_vectors_y(vectors, rotation_angle)
 
-        # Calculate the perturbation components based on the angles
-        perturb_x = np.sin(angle_xy_rad) * np.cos(angle_zy_rad)
-        perturb_y = np.sin(angle_zy_rad)
-        perturb_z = np.cos(angle_xy_rad) * np.cos(angle_zy_rad)
-
-        # Perturbation vector
-        perturbation_vector = np.array([perturb_x, perturb_y, perturb_z])
-
-        # Force vector is the combination of the base vector and the perturbation, scaled by the magnitude
-        force_vector = magnitude * (base_vector + perturbation_vector)
-
-        vectors.append(force_vector)
-
-    return np.array(vectors)
+    return rotated_vectors
 
 def generate_distribution(distribution_parameters):
     distribution_type = distribution_parameters["type"].GetString()
