@@ -60,7 +60,6 @@ class RobustPCEStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
                 ModifySurfaceLoads(self.primal_model_part, x_val,self.load_name)
             else:
                 raise ValueError(f"Unknown load_type: {self.load_type}")
-            self.primal_analysis._GetSolver().Initialize()
             self.primal_analysis._GetSolver().Predict()
             self.primal_analysis._GetSolver().SolveSolutionStep()
             self.response_function_utility = StructuralMechanicsApplication.StrainEnergyResponseFunctionUtility(self.primal_model_part, self.response_settings)

@@ -24,7 +24,8 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         self.force_direction = response_settings.Has("force_direction") and response_settings["force_direction"].GetString() or "z"
         self.load_type = response_settings.Has("load_type") and response_settings["load_type"].GetString() or "PointLoad"
         self.load_magnitude = response_settings.Has("load_magnitude") and response_settings["load_magnitude"].GetInt() or 100000
-        self.csv_filename = response_settings["response_type"].GetString()+self.load_name+"+values.csv"  # Define your CSV file name here
+        self.csv_filename = "mc_response_values"+self.load_name+".csv"  # Define your CSV file name here
+        self.sample_values_filename = "sample_values.csv"+self.load_name+".csv"  # CSV file for logging sample values
 
     def CalculateValue(self):
         Logger.PrintInfo("StrainEnergyResponse", "Starting primal analysis for response", self.identifier, "Strategy is:", self.sampling_strategy)
@@ -34,15 +35,16 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
 
         distribution = generate_distribution(self.distribution_parameters)
         sample_angles = generate_samples(distribution, self.num_samples, self.sampling_strategy)
+
         # Choose the appropriate force vector calculation function
         if self.force_direction.lower() == 'x':
-            samples = calculate_force_vectors_x(sample_angles,  self.load_magnitude)
+            samples = calculate_force_vectors_x(sample_angles, self.load_magnitude)
         elif self.force_direction.lower() == 'z':
-            samples = calculate_force_vectors_z(sample_angles,  self.load_magnitude)
+            samples = calculate_force_vectors_z(sample_angles, self.load_magnitude)
         elif self.force_direction.lower() == '+z':
             samples = calculate_force_vectors_pos_z(sample_angles, self.load_magnitude)
         elif self.force_direction.lower() == 'xz':
-            samples = calculate_force_vectors_xz(sample_angles,  self.load_magnitude)
+            samples = calculate_force_vectors_xz(sample_angles, self.load_magnitude)
         else:
             raise ValueError(f"Unknown force direction: {self.force_direction}")
 
@@ -53,9 +55,9 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
             x_val = samples[i]
             Logger.PrintInfo(x_val)
             if self.load_type == "PointLoad":
-                ModifyPointLoads(self.primal_model_part, x_val,self.load_name)
+                ModifyPointLoads(self.primal_model_part, x_val, self.load_name)
             elif self.load_type == "SurfaceLoad":
-                ModifySurfaceLoads(self.primal_model_part, x_val,self.load_name)
+                ModifySurfaceLoads(self.primal_model_part, x_val, self.load_name)
             else:
                 raise ValueError(f"Unknown load_type: {self.load_type}")
             self.primal_analysis._GetSolver().Predict()
@@ -68,6 +70,9 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
 
             for node in self.primal_model_part.Nodes:
                 sample_gradient[i][node.Id] = node.GetSolutionStepValue(KratosMultiphysics.SHAPE_SENSITIVITY)
+
+        # Save sample values to CSV after every iteration
+        self._log_sample_values(sample_value)
 
         mean_value = np.mean(sample_value, dtype=float)
         std_value = np.std(sample_value, dtype=float)
@@ -106,8 +111,14 @@ class RobustMCStrainEnergyResponseFunction(UQStrainEnergyResponseFunction):
         self.primal_model_part.ProcessInfo[StructuralMechanicsApplication.RESPONSE_VALUE] = weighted_value
         Logger.PrintInfo("StrainEnergyResponse", "Time needed for calculating the response value", round(timer.time() - startTime, 2), "s")
 
-        # Save the results to a CSV file
+        # Save the mean and std values to a CSV file
         self._save_results_to_csv(mean_value, std_value)
+
+    def _log_sample_values(self, sample_values):
+        """Append sample values as a new column in sample_values.csv"""
+        with open(self.sample_values_filename, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(sample_values)  # Log sample values as a new row
 
     def _save_results_to_csv(self, mean_value, std_value):
         with open(self.csv_filename, mode='a', newline='') as file:
